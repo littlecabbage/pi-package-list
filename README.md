@@ -1,18 +1,22 @@
 # pi-package-list
 
-将 Pi 启动时逗号分隔的资源列表改为默认按来源分组、逐项换行，并在名称旁对齐显示自定义 metadata，无需按 Ctrl+O。
+默认展示 `user/project/path → local/npm/git → 名称 + metadata`，隐藏扩展入口后缀和重复包标题，无需按 Ctrl+O。
 
 ```text
 [Extensions]
   user
-    - ask-user  交互式需求确认
-    git:github.com/littlecabbage/pi-package-list
+    local
+      - ask-user         交互式需求确认
       - pi-package-list  启动资源列表与描述
+    npm
+      - @ff-labs/pi-fff  模糊文件/内容搜索
 ```
 
 ## 安装
 
 需要 Node.js 24+ 和 Pi。当前兼容性验证基线：Pi **0.99.1**。
+
+当前 **0.3.0 为本地开发版本，尚未发布**。下方 Git 命令安装已发布的 0.2.0，不包含本次简化展示；要使用新功能，请按本地开发方式安装。
 
 ```sh
 pi install git:github.com/littlecabbage/pi-package-list@v0.2.0
@@ -36,7 +40,8 @@ pi install "$PWD"
 ```json
 {
   "extensions": {
-    "pi-package-list:extensions": "启动资源列表与描述",
+    "pi-package-list": "启动资源列表与描述",
+    "@ff-labs/pi-fff": "模糊文件/内容搜索",
     "ask-user": "交互式需求确认"
   },
   "skills": {
@@ -45,9 +50,9 @@ pi install "$PWD"
 }
 ```
 
-键名必须与 Pi 列表中的显示名称完全一致；包安装和单文件安装的名称可能不同。插件自动登记新名称，描述默认为空，不覆盖已有描述。支持 `context`、`skills`、`prompts`、`extensions`、`themes`。无效 JSON 或读写失败时不覆盖原文件。
+建议以默认视图中的名称作为键名，例如 `@ff-labs/pi-fff`。插件兼容旧入口键（如 `@ff-labs/pi-fff:src`、`cannbot-proxy.ts`、`extensions`）：新名称的非空描述优先，否则读取旧入口描述；同一包的多个不同描述去重后用 ` / ` 合并。插件自动登记新名称，描述默认为空，不覆盖或删除旧描述。支持 `context`、`skills`、`prompts`、`extensions`、`themes`。无效 JSON 或读写失败时不覆盖原文件。
 
-默认视图中，Extensions、Skills、Prompts 按 Pi 提供的 `project` / `user` / `path` 和 `npm:` / `git:` 来源分组，保留简短名称及描述，不显示完整文件路径。Context 继续逐项显示，因 Pi 不为它构建这些来源分组。Ctrl+O 仍可切换到完整来源和路径视图。缺少可识别的宿主分组或名称数据时回退到普通名称列表，不猜测来源。沿用旧插件行为：隐藏 `[Themes]` 及其后空行，保留诊断警告。
+默认视图中，Extensions、Skills、Prompts 先按 Pi 提供的 `project` / `user` / `path` 分组，再按 `local` / `npm` / `git` 分类。Extensions 每个包只显示一行，隐藏 `:src` 等入口后缀；本地 Pi 包从就近的 `package.json` 读取名字（如 `pi-package-list`、`pi-ego`），独立脚本隐藏 `.ts` / `.js` 后缀。Skills 和 Prompts 保留各自名称，不合并为包。显示名称和描述，不显示完整文件路径。Context 继续逐项显示，因 Pi 不为它构建这些来源分组。Ctrl+O 仍可切换到完整来源和路径视图。缺少可识别的宿主分组或名称数据时回退到普通名称列表，不猜测来源。沿用旧插件行为：隐藏 `[Themes]` 及其后空行，保留诊断警告。
 
 ## 兼容性边界
 
@@ -61,6 +66,7 @@ pi install "$PWD"
 extensions/index.ts       官方包入口
 src/list.ts               列表转换与 metadata 存储
 src/host-patch.ts         宿主内部 API 兼容层
+src/package-name.ts       本地 Pi 包名称识别
 tests/                    Node.js 原生回归测试
 .github/workflows/test.yml CI
 CHANGELOG.md              版本变更记录
@@ -73,7 +79,7 @@ npm test
 npm run check
 ```
 
-测试覆盖默认来源分组、名称与 metadata 保留、换行、ANSI、旧/新宿主、展开/收起、主题重建、重复安装、诊断保留和异常清理。无须安装依赖即可运行测试；宿主导入由 Pi 加载器提供。
+测试覆盖来源分类、包入口合并、旧 metadata 兼容、规范包描述优先、本地包名称识别、换行、ANSI、旧/新宿主、展开/收起、主题重建、重复安装、诊断保留和异常清理。无须安装依赖即可运行测试；宿主导入由 Pi 加载器提供。
 
 采用 SemVer：兼容修复增加 patch，新功能增加 minor，不兼容变更增加 major（0.x 阶段破坏性改动增加 minor）。发布前更新 `package.json` 和 `CHANGELOG.md`、通过检查，再提交并创建对应 `vX.Y.Z` tag 和 GitHub Release。当前仅通过 GitHub 分发，不发布 npm。
 

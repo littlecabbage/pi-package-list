@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0 (Unreleased)
+
+- 默认按 scope → local/npm/git → 名称和 metadata 展示，不再重复显示每个包的来源标题。
+- 扩展包的多个入口合并为一行，隐藏入口后缀；独立脚本隐藏源码扩展名。
+- 本地 Pi 包从 manifest 读取真实包名，解决 extensions/src 等含糊名称。
+- 保留旧入口 metadata，新包名描述优先，多个旧描述去重合并，不删除旧配置。
+- 增加入口合并与名称识别测试；共 27 项回归测试通过。
+
 ## 0.2.0
 
 - 默认视图按 Pi 原生 project/user/path 和 npm/git 来源分组，无需 Ctrl+O。

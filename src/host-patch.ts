@@ -1,5 +1,7 @@
 import { groupedSectionToList, isHiddenWelcomeSectionText, parseSectionKey, sectionToList, type NamedScopeGroup, type WelcomeMetadataStore } from "./list.ts";
 
+import { localPackageName } from "./package-name.ts";
+
 const PATCH_FLAG = Symbol.for("pi-package-list:loaded-resources");
 
 function shouldHideLoadedChild(child: unknown): boolean {
@@ -78,6 +80,7 @@ type HostInstance = {
 	loadedResourcesContainer?: { addChild: (child: unknown) => unknown };
 	buildScopeGroups?: (items: ResourceItem[]) => HostScopeGroup[];
 	getCompactExtensionLabels?: (items: ResourceItem[]) => string[];
+	getCompactPackageSourceLabel?: (sourceInfo: unknown) => string;
 	getStartupExpansionState?: () => boolean;
 	session?: {
 		resourceLoader?: { getSkills: () => { skills: { filePath: string; name: string }[] } };
@@ -106,8 +109,14 @@ function nameScopeGroups(
 	if (items.some((item) => !labels.has(item.path))) return undefined;
 	return groups.map((group) => ({
 		scope: group.scope,
-		paths: group.paths.map((item) => labels.get(item.path)!),
-		packages: Array.from(group.packages, ([source, items]) => [source, items.map((item) => labels.get(item.path)!)]),
+		paths: group.paths.map((item) => section === "extensions"
+			? { name: localPackageName(item.path) ?? labels.get(item.path)!.replace(/\.(?:[cm]?[jt]s)$/, ""), metadataNames: [labels.get(item.path)!] }
+			: labels.get(item.path)!),
+		packages: Array.from(group.packages, ([source, items]) => [
+			source,
+			items.map((item) => labels.get(item.path)!),
+			host.getCompactPackageSourceLabel?.(items[0]?.sourceInfo),
+		]),
 	}));
 }
 

@@ -218,11 +218,36 @@ export function compactBodyToList(body: string, ctx?: ListTransformContext): str
 		.join("\n");
 }
 
+export type NamedResource = { name: string; metadataNames: string[] };
 export type NamedScopeGroup = {
 	scope: string;
-	paths: string[];
-	packages: [string, string[]][];
+	paths: (string | NamedResource)[];
+	packages: [string, string[], string?][];
 };
+
+function resourceBullets(
+	items: NamedResource[],
+	section: WelcomeSectionKey,
+	store?: WelcomeMetadataStore,
+): string[] {
+	const merged = new Map<string, Set<string>>();
+	for (const item of items) {
+		const aliases = merged.get(item.name) ?? new Set<string>();
+		for (const alias of item.metadataNames) aliases.add(alias);
+		merged.set(item.name, aliases);
+	}
+	const names = [...merged.keys()].sort((a, b) => a.localeCompare(b));
+	const lookup: WelcomeMetadataStore | undefined = store && {
+		register: (key, values) => store.register(key, values),
+		get(key, name) {
+			const canonical = store.get(key, name)?.trim();
+			if (canonical) return canonical;
+			return [...new Set([...(merged.get(name) ?? [])]
+				.map((alias) => store.get(key, alias)?.trim()).filter(Boolean))].join(" / ");
+		},
+	};
+	return formatBullets("      ", names, { section, store: lookup });
+}
 
 /** Compact names and descriptions, grouped using the host's source metadata. */
 export function groupedSectionToList(
@@ -237,10 +262,24 @@ export function groupedSectionToList(
 	const output: string[] = [];
 	for (const group of groups) {
 		output.push(`  ${group.scope}`);
-		output.push(...formatBullets("    ", [...group.paths].sort((a, b) => a.localeCompare(b)), { section, store }));
-		for (const [source, names] of [...group.packages].sort(([a], [b]) => a.localeCompare(b))) {
-			output.push(`    ${source}`);
-			output.push(...formatBullets("      ", [...names].sort((a, b) => a.localeCompare(b)), { section, store }));
+		const sources = new Map<string, NamedResource[]>();
+		if (group.paths.length > 0) sources.set("local", group.paths.map((item) => typeof item === "string"
+			? { name: item, metadataNames: [item] } : item));
+		for (const [source, names, packageName] of group.packages) {
+			const kind = source.startsWith("npm:") ? "npm" : source.startsWith("git:") ? "git" : "other";
+			const items = sources.get(kind) ?? [];
+			if (section === "extensions") {
+				items.push({ name: packageName ?? source.replace(/^(npm:|git:)/, ""), metadataNames: names });
+			} else {
+				items.push(...names.map((name) => ({ name, metadataNames: [name] })));
+			}
+			sources.set(kind, items);
+		}
+		for (const kind of ["local", "npm", "git", "other"]) {
+			const items = sources.get(kind);
+			if (!items?.length) continue;
+			output.push(`    ${kind}`);
+			output.push(...resourceBullets(items, section, store));
 		}
 	}
 	return `${lines[0]}${nl}${output.map((line) => wrapAnsiLine(body, line)).join(nl)}`;
