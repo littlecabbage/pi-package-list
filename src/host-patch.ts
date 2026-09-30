@@ -3,6 +3,13 @@ import { groupedSectionToList, isHiddenWelcomeSectionText, parseSectionKey, sect
 import { localPackageName } from "./package-name.ts";
 
 const PATCH_FLAG = Symbol.for("pi-package-list:loaded-resources");
+const HOST_REF = Symbol.for("pi-package-list:host-instance");
+
+export type LoadedExtension = {
+	name: string;
+	metadataNames: string[];
+	paths: string[];
+};
 
 function shouldHideLoadedChild(child: unknown): boolean {
 	if (!child || typeof child !== "object") return false;
@@ -70,7 +77,7 @@ function patchExpandable(
 	}
 }
 
-type ResourceItem = { path: string; sourceInfo?: unknown };
+type ResourceItem = { path: string; hidden?: boolean; sourceInfo?: { source?: string } };
 type HostScopeGroup = {
 	scope: string;
 	paths: ResourceItem[];
@@ -82,8 +89,13 @@ type HostInstance = {
 	getCompactExtensionLabels?: (items: ResourceItem[]) => string[];
 	getCompactPackageSourceLabel?: (sourceInfo: unknown) => string;
 	getStartupExpansionState?: () => boolean;
+	showLoadedResources?: (options?: unknown) => unknown;
+	ui?: { requestRender: () => void };
 	session?: {
-		resourceLoader?: { getSkills: () => { skills: { filePath: string; name: string }[] } };
+		resourceLoader?: {
+			getSkills: () => { skills: { filePath: string; name: string }[] };
+			getExtensions?: () => { extensions: ResourceItem[] };
+		};
 		promptTemplates?: { filePath: string; name: string }[];
 	};
 };
@@ -110,7 +122,7 @@ function nameScopeGroups(
 	return groups.map((group) => ({
 		scope: group.scope,
 		paths: group.paths.map((item) => section === "extensions"
-			? { name: localPackageName(item.path) ?? labels.get(item.path)!.replace(/\.(?:[cm]?[jt]s)$/, ""), metadataNames: [labels.get(item.path)!] }
+			? { name: extensionDisplayName(host, item, labels.get(item.path)!), metadataNames: [labels.get(item.path)!] }
 			: labels.get(item.path)!),
 		packages: Array.from(group.packages, ([source, items]) => [
 			source,
@@ -120,12 +132,47 @@ function nameScopeGroups(
 	}));
 }
 
+function extensionDisplayName(host: HostInstance, item: ResourceItem, label: string): string {
+	const source = item.sourceInfo?.source ?? "";
+	if (source.startsWith("npm:") || source.startsWith("git:")) {
+		return host.getCompactPackageSourceLabel?.(item.sourceInfo) ?? source.replace(/^(npm:|git:)/, "");
+	}
+	return localPackageName(item.path) ?? label.replace(/\.(?:[cm]?[jt]s)$/, "");
+}
+
 type HostInteractiveMode = {
 	prototype?: {
 		showLoadedResources?: (options?: unknown) => unknown;
 		[PATCH_FLAG]?: boolean;
+		[HOST_REF]?: WeakRef<HostInstance>;
 	};
 };
+
+/** Read the active host's loaded extensions, not arbitrary installed packages. */
+export function getLoadedExtensions(InteractiveMode: HostInteractiveMode): LoadedExtension[] {
+	const host = InteractiveMode.prototype?.[HOST_REF]?.deref();
+	const getExtensions = host?.session?.resourceLoader?.getExtensions;
+	if (!host || !getExtensions || !host.getCompactExtensionLabels) {
+		throw new Error("无法读取已加载插件，请重启 Pi 后再执行此命令（仅支持 TUI 模式）。");
+	}
+	const items = getExtensions.call(host.session!.resourceLoader).extensions.filter((item) => !item.hidden);
+	const labels = host.getCompactExtensionLabels(items);
+	const inventory = new Map<string, LoadedExtension>();
+	items.forEach((item, index) => {
+		const name = extensionDisplayName(host, item, labels[index]);
+		const entry = inventory.get(name) ?? { name, metadataNames: [], paths: [] };
+		if (!entry.metadataNames.includes(labels[index])) entry.metadataNames.push(labels[index]);
+		if (!entry.paths.includes(item.path)) entry.paths.push(item.path);
+		inventory.set(name, entry);
+	});
+	return [...inventory.values()];
+}
+
+export function refreshLoadedResources(InteractiveMode: HostInteractiveMode): void {
+	const host = InteractiveMode.prototype?.[HOST_REF]?.deref();
+	host?.showLoadedResources?.({ force: true });
+	host?.ui?.requestRender();
+}
 
 export function installPackageListPatch(
 	InteractiveMode: HostInteractiveMode,
@@ -134,6 +181,7 @@ export function installPackageListPatch(
 	const proto = InteractiveMode?.prototype as {
 		showLoadedResources?: (options?: unknown) => unknown;
 		[PATCH_FLAG]?: boolean;
+		[HOST_REF]?: WeakRef<HostInstance>;
 	} | undefined;
 	if (!proto || typeof proto.showLoadedResources !== "function" || proto[PATCH_FLAG]) {
 		return false;
@@ -141,6 +189,7 @@ export function installPackageListPatch(
 	const original = proto.showLoadedResources;
 	proto.showLoadedResources = function patchedShowLoadedResources(options?: unknown) {
 		const host = this as HostInstance;
+		proto[HOST_REF] = new WeakRef(host);
 		const container = host.loadedResourcesContainer;
 		if (!container || typeof container.addChild !== "function") {
 			return original.call(this, options);

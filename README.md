@@ -33,6 +33,44 @@ pi install "$PWD"
 
 首次安装后执行 `/reload` 或重启 Pi。**更新插件代码后请退出并重启 Pi**：当前进程的原型补丁不会因 `/reload` 自动替换，原因见下方实现原理。不要同时加载旧的 `welcome-list.ts` 或其他副本。
 
+## 自动补充描述
+
+```text
+/pi-package-list update
+```
+
+只处理**当前已加载的 Extensions**，不会升级插件，也不会修改已有非空描述（包括旧入口键的描述）。
+
+```mermaid
+flowchart TD
+    A[已加载插件] --> B{已有描述？}
+    B -->|有| C[保留，不修改]
+    B -->|没有| D{包有 description？}
+    D -->|有| E[直接采用包描述]
+    D -->|没有| F{确认使用当前模型？}
+    F -->|确认| G[根据 README 和入口源码生成中文简述]
+    F -->|取消或无模型| H[跳过，保持空白]
+    E --> I[重新检查旧描述，写入空缺并刷新树]
+    G --> I
+```
+
+- 包描述保留原语言；模型生成一句中文说明，不调用工具、不创建子 agent。
+- 模型请求前会确认：会向**当前模型提供方**发送本地 README/入口源码片段，并消耗额度。每个包最多取三个入口，资料上限 12000 字符；不发送会话、凭据文件或完整目录。
+- 只做常见密钥模式脱敏，不能保证识别所有敏感内容；敏感插件请选择取消。取消确认仍会补充可直接读取的包描述。
+- 模型不可用、超时或返回无效内容时跳过对应项，不编造描述。
+- 写入完成会刷新树，无需重启。**首次加入此命令仍需重启 Pi**以加载新代码。
+
+取消正在运行的更新：`/pi-package-list cancel`。会放弃本次尚未写入的结果；退出、切换或重载会话触发 shutdown 时也会取消。
+
+<details>
+<summary>写入保护和模型调用细节</summary>
+
+命令使用官方 `registerCommand()`，已加载插件清单由隔离的宿主兼容层提供。模型调用使用 `ctx.modelRegistry.streamSimple()` 和当前 `ctx.model`，仅传入参考资料及摘要指令，不附带当前聊天记录或工具。每项请求上限 60 秒，最多输出 512 tokens，要求 JSON `description`；空摘要不写入。成功解析的响应 usage 作为自定义会话条目记录，不保证计入 Pi 原生用量统计。
+
+`src/metadata-update.ts` 收集候选描述；`src/update-command.ts` 管理确认、并发保护、取消和进度。模型等待结束后，在宿主 `withFileMutationQueue()` 内重新读取 metadata，再检查新名称及旧别名，避免覆盖期间新增的手写描述。只改 `extensions` 空缺项，其余字段保留；无效 JSON 或无效 extensions 格式直接报错。写入使用同目录临时文件和 rename，防止半写文件；不提供跨进程编辑锁。
+
+</details>
+
 ## Metadata
 
 为兼容旧配置，继续读取 Pi agent 目录下的 `welcome-metadata.json`（默认 `~/.pi/agent/welcome-metadata.json`，实际路径由 Pi 的 `getAgentDir()` 决定）。此文件是用户数据，不属于插件源码，不会上传到仓库。
@@ -133,7 +171,9 @@ Pi 0.99.1 的 `ExpandableText` 将收起/展开文字生成函数保存在闭包
 extensions/index.ts       官方包入口
 src/list.ts               列表转换与 metadata 存储
 src/host-patch.ts         宿主内部 API 兼容层
-src/package-name.ts       本地 Pi 包名称识别
+src/package-name.ts       本地 Pi 包名称和 manifest 读取
+src/metadata-update.ts    描述收集、模型输出校验及原子写入
+src/update-command.ts     update/cancel 命令及模型调用
 tests/                    Node.js 原生回归测试
 .github/workflows/test.yml CI
 CHANGELOG.md              版本变更记录
