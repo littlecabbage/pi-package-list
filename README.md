@@ -1,15 +1,15 @@
 # pi-package-list
 
-默认展示 `user/project/path → local/npm/git → 名称 + metadata`，隐藏扩展入口后缀和重复包标题，无需按 Ctrl+O。
+以标准树形线条展示 `user/project/path → local/npm/git → 名称 + metadata`，隐藏扩展入口后缀和重复包标题，无需按 Ctrl+O。
 
 ```text
 [Extensions]
-  user
-    local
-      - ask-user         交互式需求确认
-      - pi-package-list  启动资源列表与描述
-    npm
-      - @ff-labs/pi-fff  模糊文件/内容搜索
+└── user
+    ├── local
+    │   ├── ask-user         交互式需求确认
+    │   └── pi-package-list  启动资源列表与描述
+    └── npm
+        └── @ff-labs/pi-fff  模糊文件/内容搜索
 ```
 
 ## 安装
@@ -79,7 +79,7 @@ npm test
 npm run check
 ```
 
-测试覆盖来源分类、包入口合并、旧 metadata 兼容、规范包描述优先、本地包名称识别、换行、ANSI、旧/新宿主、展开/收起、主题重建、重复安装、诊断保留和异常清理。无须安装依赖即可运行测试；宿主导入由 Pi 加载器提供。
+测试覆盖树形分支与末尾节点、来源分类、包入口合并、旧 metadata 兼容、规范包描述优先、本地包名称识别、换行、ANSI、旧/新宿主、展开/收起、主题重建、重复安装、诊断保留和异常清理。无须安装依赖即可运行测试；宿主导入由 Pi 加载器提供。
 
 采用 SemVer：兼容修复增加 patch，新功能增加 minor，不兼容变更增加 major（0.x 阶段破坏性改动增加 minor）。发布前更新 `package.json` 和 `CHANGELOG.md`、通过检查，再提交并创建对应 `vX.Y.Z` tag 和 GitHub Release。当前仅通过 GitHub 分发，不发布 npm。
 

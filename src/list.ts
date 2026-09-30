@@ -225,7 +225,7 @@ export type NamedScopeGroup = {
 	packages: [string, string[], string?][];
 };
 
-function resourceBullets(
+function resourceRows(
 	items: NamedResource[],
 	section: WelcomeSectionKey,
 	store?: WelcomeMetadataStore,
@@ -246,10 +246,22 @@ function resourceBullets(
 				.map((alias) => store.get(key, alias)?.trim()).filter(Boolean))].join(" / ");
 		},
 	};
-	return formatBullets("      ", names, { section, store: lookup });
+	return formatBullets("", names, { section, store: lookup }).map((line) => line.slice(2));
 }
 
-/** Compact names and descriptions, grouped using the host's source metadata. */
+type TreeNode = { label: string; children?: TreeNode[] };
+
+function renderTree(nodes: TreeNode[], prefix = ""): string[] {
+	return nodes.flatMap((node, index) => {
+		const last = index === nodes.length - 1;
+		return [
+			`${prefix}${last ? "└── " : "├── "}${node.label}`,
+			...renderTree(node.children ?? [], `${prefix}${last ? "    " : "│   "}`),
+		];
+	});
+}
+
+/** Compact names and descriptions as a tree, using the host's source metadata. */
 export function groupedSectionToList(
 	text: string,
 	groups: NamedScopeGroup[],
@@ -259,9 +271,9 @@ export function groupedSectionToList(
 	const section = parseSectionKey(lines[0] ?? "");
 	if (!section || groups.length === 0) return sectionToList(text, "compact", { store });
 	const body = lines.slice(1).join(nl);
-	const output: string[] = [];
+	const scopes: TreeNode[] = [];
 	for (const group of groups) {
-		output.push(`  ${group.scope}`);
+		const categories: TreeNode[] = [];
 		const sources = new Map<string, NamedResource[]>();
 		if (group.paths.length > 0) sources.set("local", group.paths.map((item) => typeof item === "string"
 			? { name: item, metadataNames: [item] } : item));
@@ -278,11 +290,11 @@ export function groupedSectionToList(
 		for (const kind of ["local", "npm", "git", "other"]) {
 			const items = sources.get(kind);
 			if (!items?.length) continue;
-			output.push(`    ${kind}`);
-			output.push(...resourceBullets(items, section, store));
+			categories.push({ label: kind, children: resourceRows(items, section, store).map((label) => ({ label })) });
 		}
+		if (categories.length > 0) scopes.push({ label: group.scope, children: categories });
 	}
-	return `${lines[0]}${nl}${output.map((line) => wrapAnsiLine(body, line)).join(nl)}`;
+	return `${lines[0]}${nl}${renderTree(scopes).map((line) => wrapAnsiLine(body, line)).join(nl)}`;
 }
 
 const SCOPE_HEADERS = new Set(["user", "project", "path"]);
