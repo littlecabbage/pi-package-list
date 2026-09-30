@@ -1,0 +1,16 @@
+{
+  "name": "pi-package-list",
+  "version": "0.1.0",
+  "description": "Readable Pi startup resource lists with aligned metadata descriptions.",
+  "type": "module",
+  "license": "MIT",
+  "keywords": ["pi-package", "pi-extension", "startup", "metadata"],
+  "repository": { "type": "git", "url": "git+https://github.com/littlecabbage/pi-package-list.git" },
+  "homepage": "https://github.com/littlecabbage/pi-package-list#readme",
+  "bugs": { "url": "https://github.com/littlecabbage/pi-package-list/issues" },
+  "engines": { "node": ">=24" },
+  "files": ["extensions/", "src/", "README.md", "CHANGELOG.md", "LICENSE"],
+  "pi": { "extensions": ["./extensions/index.ts"] },
+  "peerDependencies": { "@earendil-works/pi-coding-agent": "*" },
+  "scripts": { "test": "node --test tests/*.test.mjs", "check": "npm test && npm pack --dry-run" }
+}
