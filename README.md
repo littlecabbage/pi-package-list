@@ -56,13 +56,25 @@ pi install "$PWD"
 
 ## 实现原理
 
-```text
-Pi 生成启动资源列表
-  → 捕获原生 scope 分组和资源名称
-  → 将入口映射为包名，关联 metadata
-  → 构建 scope → 来源类型 → 名称/描述 的树
-  → 在原来的启动列表组件中显示
+插件只改变**怎么显示**，不安装、卸载或重复加载插件。
+
+```mermaid
+flowchart TD
+    A[Pi 生成启动列表] --> B[获取来源分组和资源名称]
+    B --> C{当前视图}
+    C -->|默认| D[多个入口合并为一个包名]
+    M["welcome-metadata.json 中的描述"] --> E[匹配包名与旧入口描述]
+    D --> E
+    E --> F["生成树：user/project/path → local/npm/git → 名称 + 描述"]
+    C -->|Ctrl+O 展开| G[显示原生来源分组和完整路径]
+    F --> H[显示在 Pi 原来的启动区域]
+    G --> H
 ```
+
+**一句话：**拿到 Pi 的来源信息 → 合并入口 → 配上描述 → 画成树。Skills 和 Prompts 保留各自名称，不合并成包。
+
+<details>
+<summary>展开技术细节：数据捕获、metadata 兼容、树形渲染与重启原因</summary>
 
 ### 1. 捕获来源，不解析文字猜分组
 
@@ -106,6 +118,8 @@ Pi 0.99.1 的 `ExpandableText` 将收起/展开文字生成函数保存在闭包
 ### 5. 为什么更新代码需要重启
 
 补丁通过 `Symbol.for("pi-package-list:loaded-resources")` 在宿主原型上标记，避免同一进程重复包装。`/reload` 虽然重新加载扩展，但不会移除该标记或替换已安装补丁的闭包，因此更新实现后需要重启 Pi。metadata 则由 store 在读取时刷新，不需要重新安装补丁；界面会在文字组件下一次重建时反映描述变更。
+
+</details>
 
 ## 兼容性边界
 
