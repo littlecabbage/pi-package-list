@@ -1,6 +1,6 @@
 {
   "name": "pi-package-list",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Readable Pi startup resource lists with aligned metadata descriptions.",
   "type": "module",
   "license": "MIT",

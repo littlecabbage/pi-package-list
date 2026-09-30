@@ -1,4 +1,4 @@
-import { isHiddenWelcomeSectionText, parseSectionKey, sectionToList, type WelcomeMetadataStore } from "./list.ts";
+import { groupedSectionToList, isHiddenWelcomeSectionText, parseSectionKey, sectionToList, type NamedScopeGroup, type WelcomeMetadataStore } from "./list.ts";
 
 const PATCH_FLAG = Symbol.for("pi-package-list:loaded-resources");
 
@@ -31,7 +31,11 @@ function patchExpandable(
 	child: ExpandableChild,
 	expanded: boolean,
 	store?: WelcomeMetadataStore,
+	groups?: NamedScopeGroup[],
 ): void {
+	const compact = (text: string) => groups
+		? groupedSectionToList(text, groups, store)
+		: sectionToList(text, "compact", { store });
 	// Newer Pi keeps text factories in a closure and exposes ThemedText.build.
 	if (typeof child.getCollapsedText !== "function") {
 		if (typeof child.build !== "function" || typeof child.setExpanded !== "function") return;
@@ -39,7 +43,7 @@ function patchExpandable(
 		child.build = () => {
 			const text = originalBuild();
 			if (!parseSectionKey(text.split(/\r?\n/, 1)[0] ?? "")) return text;
-			return sectionToList(text, child.state?.expanded ? "expanded" : "compact", { store });
+			return child.state?.expanded ? sectionToList(text, "expanded") : compact(text);
 		};
 		child.invalidate?.();
 		return;
@@ -48,7 +52,7 @@ function patchExpandable(
 	const origExpanded = typeof child.getExpandedText === "function"
 		? child.getExpandedText.bind(child)
 		: undefined;
-	child.getCollapsedText = () => sectionToList(origCollapsed(), "compact", { store });
+	child.getCollapsedText = () => compact(origCollapsed());
 	if (origExpanded) {
 		child.getExpandedText = () => sectionToList(origExpanded(), "expanded");
 	}
@@ -62,6 +66,49 @@ function patchExpandable(
 			: child.getCollapsedText();
 		child.setText(text);
 	}
+}
+
+type ResourceItem = { path: string; sourceInfo?: unknown };
+type HostScopeGroup = {
+	scope: string;
+	paths: ResourceItem[];
+	packages: Map<string, ResourceItem[]>;
+};
+type HostInstance = {
+	loadedResourcesContainer?: { addChild: (child: unknown) => unknown };
+	buildScopeGroups?: (items: ResourceItem[]) => HostScopeGroup[];
+	getCompactExtensionLabels?: (items: ResourceItem[]) => string[];
+	getStartupExpansionState?: () => boolean;
+	session?: {
+		resourceLoader?: { getSkills: () => { skills: { filePath: string; name: string }[] } };
+		promptTemplates?: { filePath: string; name: string }[];
+	};
+};
+
+function nameScopeGroups(
+	host: HostInstance,
+	section: string,
+	groups: HostScopeGroup[],
+	extensionLabels: Map<string, string>,
+): NamedScopeGroup[] | undefined {
+	let labels: Map<string, string>;
+	if (section === "extensions") {
+		labels = extensionLabels;
+	} else if (section === "skills" && host.session?.resourceLoader) {
+		labels = new Map(host.session.resourceLoader.getSkills().skills.map((item) => [item.filePath, item.name]));
+	} else if (section === "prompts" && host.session?.promptTemplates) {
+		labels = new Map(host.session.promptTemplates.map((item) => [item.filePath, `/${item.name}`]));
+	} else {
+		return undefined;
+	}
+	// Do not guess names or silently drop resources if host metadata changes.
+	const items = groups.flatMap((group) => [...group.paths, ...Array.from(group.packages.values()).flat()]);
+	if (items.some((item) => !labels.has(item.path))) return undefined;
+	return groups.map((group) => ({
+		scope: group.scope,
+		paths: group.paths.map((item) => labels.get(item.path)!),
+		packages: Array.from(group.packages, ([source, items]) => [source, items.map((item) => labels.get(item.path)!)]),
+	}));
 }
 
 type HostInteractiveMode = {
@@ -84,8 +131,8 @@ export function installPackageListPatch(
 	}
 	const original = proto.showLoadedResources;
 	proto.showLoadedResources = function patchedShowLoadedResources(options?: unknown) {
-		const container = (this as { loadedResourcesContainer?: { addChild: (child: unknown) => unknown } })
-			.loadedResourcesContainer;
+		const host = this as HostInstance;
+		const container = host.loadedResourcesContainer;
 		if (!container || typeof container.addChild !== "function") {
 			return original.call(this, options);
 		}
@@ -93,6 +140,22 @@ export function installPackageListPatch(
 		const expanded = typeof (this as { getStartupExpansionState?: () => boolean }).getStartupExpansionState === "function"
 			? Boolean((this as { getStartupExpansionState: () => boolean }).getStartupExpansionState())
 			: false;
+		// Capture the same source groups and compact labels Pi builds for this listing.
+		const originalGroups = host.buildScopeGroups;
+		const originalLabels = host.getCompactExtensionLabels;
+		const hadOwnGroups = Object.hasOwn(host, "buildScopeGroups");
+		const hadOwnLabels = Object.hasOwn(host, "getCompactExtensionLabels");
+		let pendingGroups: HostScopeGroup[] | undefined;
+		let extensionLabels = new Map<string, string>();
+		if (originalGroups) host.buildScopeGroups = function (items) {
+			pendingGroups = originalGroups.call(this, items);
+			return pendingGroups;
+		};
+		if (originalLabels) host.getCompactExtensionLabels = function (items) {
+			const labels = originalLabels.call(this, items);
+			extensionLabels = new Map(items.map((item, index) => [item.path, labels[index]]));
+			return labels;
+		};
 		let skipFollowingSpacer = false;
 		container.addChild = function patchedAddChild(child: unknown) {
 			if (shouldHideLoadedChild(child)) {
@@ -104,7 +167,16 @@ export function installPackageListPatch(
 				if (isSpacerChild(child)) return child;
 			}
 			if (child && typeof child === "object") {
-				patchExpandable(child as ExpandableChild, expanded, store);
+				const candidate = child as ExpandableChild;
+				const getText = candidate.getCollapsedText ?? candidate.build;
+				const section = typeof getText === "function"
+					? parseSectionKey(getText.call(candidate).split(/\r?\n/, 1)[0] ?? "")
+					: undefined;
+				const groups = section && pendingGroups
+					? nameScopeGroups(host, section, pendingGroups, extensionLabels)
+					: undefined;
+				if (section) pendingGroups = undefined;
+				patchExpandable(candidate, expanded, store, groups);
 			}
 			return origAdd.call(this, child);
 		};
@@ -112,6 +184,14 @@ export function installPackageListPatch(
 			return original.call(this, options);
 		} finally {
 			container.addChild = origAdd;
+			if (originalGroups) {
+				if (hadOwnGroups) host.buildScopeGroups = originalGroups;
+				else delete host.buildScopeGroups;
+			}
+			if (originalLabels) {
+				if (hadOwnLabels) host.getCompactExtensionLabels = originalLabels;
+				else delete host.getCompactExtensionLabels;
+			}
 		}
 	};
 	proto[PATCH_FLAG] = true;

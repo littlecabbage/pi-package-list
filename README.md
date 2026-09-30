@@ -1,11 +1,13 @@
 # pi-package-list
 
-将 Pi 启动时逗号分隔的资源列表改为逐项换行，并在名称旁对齐显示自定义 metadata。
+将 Pi 启动时逗号分隔的资源列表改为默认按来源分组、逐项换行，并在名称旁对齐显示自定义 metadata，无需按 Ctrl+O。
 
 ```text
 [Extensions]
-  - pi-package-list  启动资源列表与描述
-  - ask-user         交互式需求确认
+  user
+    - ask-user  交互式需求确认
+    git:github.com/littlecabbage/pi-package-list
+      - pi-package-list  启动资源列表与描述
 ```
 
 ## 安装
@@ -13,7 +15,7 @@
 需要 Node.js 24+ 和 Pi。当前兼容性验证基线：Pi **0.99.1**。
 
 ```sh
-pi install git:github.com/littlecabbage/pi-package-list@v0.1.0
+pi install git:github.com/littlecabbage/pi-package-list@v0.2.0
 ```
 
 本地开发：
@@ -45,7 +47,7 @@ pi install "$PWD"
 
 键名必须与 Pi 列表中的显示名称完全一致；包安装和单文件安装的名称可能不同。插件自动登记新名称，描述默认为空，不覆盖已有描述。支持 `context`、`skills`、`prompts`、`extensions`、`themes`。无效 JSON 或读写失败时不覆盖原文件。
 
-收起视图显示描述；展开视图保留来源分组并为资源行增加项目符号。沿用旧插件行为：隐藏 `[Themes]` 及其后空行，保留诊断警告。
+默认视图中，Extensions、Skills、Prompts 按 Pi 提供的 `project` / `user` / `path` 和 `npm:` / `git:` 来源分组，保留简短名称及描述，不显示完整文件路径。Context 继续逐项显示，因 Pi 不为它构建这些来源分组。Ctrl+O 仍可切换到完整来源和路径视图。缺少可识别的宿主分组或名称数据时回退到普通名称列表，不猜测来源。沿用旧插件行为：隐藏 `[Themes]` 及其后空行，保留诊断警告。
 
 ## 兼容性边界
 
@@ -71,7 +73,7 @@ npm test
 npm run check
 ```
 
-测试覆盖换行、ANSI、metadata、旧/新宿主、展开/收起、主题重建、重复安装、诊断保留和异常清理。无须安装依赖即可运行测试；宿主导入由 Pi 加载器提供。
+测试覆盖默认来源分组、名称与 metadata 保留、换行、ANSI、旧/新宿主、展开/收起、主题重建、重复安装、诊断保留和异常清理。无须安装依赖即可运行测试；宿主导入由 Pi 加载器提供。
 
 采用 SemVer：兼容修复增加 patch，新功能增加 minor，不兼容变更增加 major（0.x 阶段破坏性改动增加 minor）。发布前更新 `package.json` 和 `CHANGELOG.md`、通过检查，再提交并创建对应 `vX.Y.Z` tag 和 GitHub Release。当前仅通过 GitHub 分发，不发布 npm。
 

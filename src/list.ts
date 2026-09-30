@@ -218,6 +218,34 @@ export function compactBodyToList(body: string, ctx?: ListTransformContext): str
 		.join("\n");
 }
 
+export type NamedScopeGroup = {
+	scope: string;
+	paths: string[];
+	packages: [string, string[]][];
+};
+
+/** Compact names and descriptions, grouped using the host's source metadata. */
+export function groupedSectionToList(
+	text: string,
+	groups: NamedScopeGroup[],
+	store?: WelcomeMetadataStore,
+): string {
+	const { nl, lines } = splitNl(text);
+	const section = parseSectionKey(lines[0] ?? "");
+	if (!section || groups.length === 0) return sectionToList(text, "compact", { store });
+	const body = lines.slice(1).join(nl);
+	const output: string[] = [];
+	for (const group of groups) {
+		output.push(`  ${group.scope}`);
+		output.push(...formatBullets("    ", [...group.paths].sort((a, b) => a.localeCompare(b)), { section, store }));
+		for (const [source, names] of [...group.packages].sort(([a], [b]) => a.localeCompare(b))) {
+			output.push(`    ${source}`);
+			output.push(...formatBullets("      ", [...names].sort((a, b) => a.localeCompare(b)), { section, store }));
+		}
+	}
+	return `${lines[0]}${nl}${output.map((line) => wrapAnsiLine(body, line)).join(nl)}`;
+}
+
 const SCOPE_HEADERS = new Set(["user", "project", "path"]);
 
 /** Expanded body: bullet leaf rows; keep user/project/path and npm:/git: group labels. */

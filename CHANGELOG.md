@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.0
+
+- 默认视图按 Pi 原生 project/user/path 和 npm/git 来源分组，无需 Ctrl+O。
+- 分组中保留简短资源名称与 metadata 描述，Ctrl+O 仍显示完整路径。
+- 复用宿主来源数据，新增 4 项分组测试，并验证 Pi 0.99.1 真实渲染方法。
+- 临时来源捕获方法在正常和异常路径均恢复，缺少元数据时安全回退。
+
 ## 0.1.0
 
 - 将旧 welcome-list 插件迁移为独立的 pi-package-list 官方格式 Pi 包。
