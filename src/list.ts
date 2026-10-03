@@ -178,6 +178,52 @@ export function createFileMetadataStore(filePath: string): WelcomeMetadataStore 
 	};
 }
 
+/** Maximum terminal columns a description may occupy in the startup list. */
+export const MAX_DESCRIPTION_WIDTH = 40;
+
+const ELLIPSIS = "…";
+
+/** Columns used by one code point: CJK, full-width forms and emoji take 2. */
+function charWidth(char: string): number {
+	const code = char.codePointAt(0) ?? 0;
+	if (code < 0x20 || (code >= 0x7f && code < 0xa0)) return 0;
+	if (/\p{Mark}/u.test(char) || code === 0x200d || (code >= 0xfe00 && code <= 0xfe0f)) return 0;
+	if (
+		(code >= 0x1100 && code <= 0x115f) ||
+		(code >= 0x2e80 && code <= 0xa4cf) ||
+		(code >= 0xac00 && code <= 0xd7a3) ||
+		(code >= 0xf900 && code <= 0xfaff) ||
+		(code >= 0xfe30 && code <= 0xfe4f) ||
+		(code >= 0xff00 && code <= 0xff60) ||
+		(code >= 0xffe0 && code <= 0xffe6) ||
+		(code >= 0x1f300 && code <= 0x1faff) ||
+		(code >= 0x20000 && code <= 0x3fffd)
+	) return 2;
+	return 1;
+}
+
+export function displayWidth(text: string): number {
+	let width = 0;
+	for (const char of text) width += charWidth(char);
+	return width;
+}
+
+/** Display-only truncation; stored metadata keeps the full text. */
+export function truncateDescription(text: string, maxWidth = MAX_DESCRIPTION_WIDTH): string {
+	const singleLine = text.replace(/\s+/g, " ").trim();
+	if (displayWidth(singleLine) <= maxWidth) return singleLine;
+	const budget = maxWidth - displayWidth(ELLIPSIS);
+	let width = 0;
+	let out = "";
+	for (const char of singleLine) {
+		const next = charWidth(char);
+		if (width + next > budget) break;
+		out += char;
+		width += next;
+	}
+	return `${out.trimEnd()}${ELLIPSIS}`;
+}
+
 function formatBullets(
 	indent: string,
 	items: string[],
@@ -188,7 +234,7 @@ function formatBullets(
 
 	const descriptions = items.map((item) => {
 		if (!section || !store) return "";
-		return store.get(section, item)?.trim() ?? "";
+		return truncateDescription(store.get(section, item) ?? "");
 	});
 	const nameWidth = items.reduce((width, item, index) => {
 		if (!descriptions[index]) return width;

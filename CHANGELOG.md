@@ -5,6 +5,7 @@
 - 新增 `/pi-package-list update`，为已加载插件补充缺失 metadata；优先读取包 description，缺失时经确认使用当前模型总结本地片段。
 - 新增 cancel、shutdown 取消、模型超时和失败跳过；保留手写/旧入口描述，重新读取后原子写入并刷新树。
 
+- 启动列表中的描述最多显示 40 列（中文算 2 列），超出用 … 截断并合并为单行；welcome-metadata.json 保留完整描述。
 - 默认以 ├──/└──/│ 树形线条展示 scope → local/npm/git → 名称和 metadata，不再重复显示每个包的来源标题。
 - 扩展包的多个入口合并为一行，隐藏入口后缀；独立脚本隐藏源码扩展名。
 - 本地 Pi 包从 manifest 读取真实包名，解决 extensions/src 等含糊名称。
