@@ -11,6 +11,9 @@ import {
 	sectionToList,
 	serializeWelcomeMetadata,
 	stripAnsi,
+	displayWidth,
+	MAX_DESCRIPTION_WIDTH,
+	truncateDescription,
 } from "../src/list.ts";
 
 test("compact comma list becomes bullets", () => {
@@ -95,6 +98,38 @@ test("installPackageListPatch wraps expandable collapsed text", async () => {
 	assert.equal(children[0].text, "[Skills]\n  - council-mode\n  - pi-subagents");
 	assert.equal(children[0].getExpandedText(), "[Skills]\n  user\n    - skill.md");
 	assert.equal(children[1].spacer, true);
+});
+
+test("short descriptions are kept intact", () => {
+	assert.equal(truncateDescription("模糊文件/内容搜索"), "模糊文件/内容搜索");
+	const exact = "a".repeat(MAX_DESCRIPTION_WIDTH);
+	assert.equal(truncateDescription(exact), exact);
+});
+
+test("long ascii description is truncated to the column limit", () => {
+	const out = truncateDescription(
+		"herdr integration for the pi coding agent — spawn, drive, wait for, and harvest AI agent panes",
+	);
+	assert.equal(out, "herdr integration for the pi coding age…");
+	assert.equal(displayWidth(out), MAX_DESCRIPTION_WIDTH);
+});
+
+test("cjk truncation counts two columns per character", () => {
+	const out = truncateDescription("中".repeat(30));
+	assert.equal(out, `${"中".repeat(19)}…`);
+	assert.ok(displayWidth(out) <= MAX_DESCRIPTION_WIDTH);
+});
+
+test("multi-line descriptions collapse to one line", () => {
+	assert.equal(truncateDescription("Sync Pi config,\n  with adapters"), "Sync Pi config, with adapters");
+});
+
+test("truncation is display-only and keeps stored metadata", () => {
+	const full = "Sync Pi configuration across machines via a private Git repository";
+	const store = createMemoryMetadataStore({ extensions: { "pi-sync": full } });
+	const out = compactBodyToList("  pi-sync", { section: "extensions", store });
+	assert.equal(out, "  - pi-sync  Sync Pi configuration across machines v…");
+	assert.equal(store.data.extensions["pi-sync"], full);
 });
 
 test("compact aligns descriptions from metadata", () => {
